@@ -65,32 +65,21 @@ func (s *statsDriver) Open(name string) (driver.Conn, error) {
 		return c, err
 	}
 	statc := &statsConn{d: s, wrapped: c}
+	statcc := &statsConnContext{d: s, wrapped: c}
 	q, isQ := c.(driver.Queryer)
+	qc, isQc := c.(driver.QueryerContext)
+	ec, isEc := c.(driver.ExecerContext)
 	e, isE := c.(driver.Execer)
-	if isE && isQ {
+	if isE && isQ && isEc && isQc {
 		return &statsExecerQueryer{
-			statsConn:    statc,
-			statsQueryer: &statsQueryer{statsConn: statc, wrapped: q},
-			statsExecer:  &statsExecer{statsConn: statc, wrapped: e},
+			statsConn:                 statc,
+			statsConnContext:          statcc,
+			statsQueryer:              &statsQueryer{statsConn: statc, wrapped: q},
+			statsQueryerContext:       &statsQueryerContext{statsConnContext: statcc, wrapped: qc},
+			statsExecer:               &statsExecer{statsConn: statc, wrapped: e},
+			statsExecerQueryerContext: &statsExecerQueryerContext{statsConnContext: statcc, wrapped: ec},
 		}, nil
-	} else if isQ {
-		return &statsQueryer{statsConn: statc, wrapped: q}, nil
-	} else if isE {
-		return &statsExecer{statsConn: statc, wrapped: e}, nil
-	}
-	return statc, nil
-}
-
-func (s *statsDriver) OpenContext(ctx context.Context, name string) (driver.Conn, error) {
-	c, err := s.open(name)
-	s.ConnOpenedContext(ctx, err)
-	if err != nil {
-		return c, err
-	}
-	statc := &statsConn{d: s, wrapped: c}
-	q, isQ := c.(driver.Queryer)
-	e, isE := c.(driver.Execer)
-	if isE && isQ {
+	} else if isE && isQ {
 		return &statsExecerQueryer{
 			statsConn:    statc,
 			statsQueryer: &statsQueryer{statsConn: statc, wrapped: q},
@@ -315,8 +304,17 @@ func (e *statsExecer) Exec(query string, args []driver.Value) (driver.Result, er
 
 type statsExecerQueryer struct {
 	*statsConn
+	*statsConnContext
 	*statsQueryer
+	*statsQueryerContext
 	*statsExecer
+	*statsExecerQueryerContext
+}
+
+type statsExecerQueryerContext struct {
+	*statsConnContext
+	*statsQueryerContext
+	*statsExecerQueryerContext
 }
 
 type statsStmt struct {
